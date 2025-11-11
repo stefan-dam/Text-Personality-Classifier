@@ -1,0 +1,116 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+from transformers import RobertaTokenizer
+from data_processor import DataProcessor
+from model import PersonalityClassifier
+import numpy as np
+
+class TextPersonalityDataset(Dataset):
+    def __init__(self, texts, labels, tokenizer, max_length=128):
+        self.texts = texts
+        self.labels = labels
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        
+    def __len__(self):
+        return len(self.texts)
+    
+    def __getitem__(self, idx):
+        text = str(self.texts[idx])
+        label = self.labels[idx]
+        
+        encoding = self.tokenizer(
+            text,
+            max_length=self.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+        
+        return {
+            'text': text,
+            'input_ids': encoding['input_ids'].squeeze(),
+            'attention_mask': encoding['attention_mask'].squeeze(),
+            'labels': torch.tensor(label, dtype=torch.float32)
+        }
+
+def train_model(model, train_loader, val_loader, device, num_epochs=10):
+    criterion = nn.MSELoss()
+    optimizer = optim.AdamW(model.parameters(), lr=2e-5, weight_decay=0.05)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1, verbose=True)
+    best_val_loss = float('inf')
+    patience = 2
+    wait = 0
+    best_epoch = 0
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        for batch in train_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+            texts = batch['text']
+            optimizer.zero_grad()
+            outputs = model(input_ids, attention_mask, texts)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        # Validation
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+                texts = batch['text']
+                outputs = model(input_ids, attention_mask, texts)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+        avg_train_loss = total_loss / len(train_loader)
+        avg_val_loss = val_loss / len(val_loader)
+        print(f'Epoch {epoch+1}:')
+        print(f'Average training loss: {avg_train_loss:.4f}')
+        print(f'Average validation loss: {avg_val_loss:.4f}')
+        scheduler.step(avg_val_loss)
+        # Save weights from epoch 3 or 4
+        if epoch+1 in [3, 4]:
+            torch.save(model.state_dict(), f'weights_epoch_{epoch+1}.pt')
+        # Early stopping
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_epoch = epoch
+            torch.save(model.state_dict(), 'best_model.pt')
+            wait = 0
+        else:
+            wait += 1
+            if wait >= patience:
+                print(f'Early stopping at epoch {epoch+1}')
+                break
+
+def main():
+    # Initialize data processor (uses essays-big5 from Hugging Face)
+    data_processor = DataProcessor()
+    X_train, X_test, y_train, y_test = data_processor.load_and_preprocess()
+    
+    # Initialize tokenizer and model
+    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    model = PersonalityClassifier()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+    
+    # Create datasets and dataloaders
+    train_dataset = TextPersonalityDataset(X_train, y_train, tokenizer)
+    test_dataset = TextPersonalityDataset(X_test, y_test, tokenizer)
+    
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=16)
+    
+    # Train the model
+    train_model(model, train_loader, test_loader, device)
+
+if __name__ == '__main__':
+    main()
