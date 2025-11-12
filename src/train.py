@@ -39,7 +39,7 @@ class TextPersonalityDataset(Dataset):
 def train_model(model, train_loader, val_loader, device, num_epochs=10):
     criterion = nn.MSELoss()
     optimizer = optim.AdamW(model.parameters(), lr=2e-5, weight_decay=0.05)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
     best_val_loss = float('inf')
     patience = 2
     wait = 0
@@ -72,9 +72,50 @@ def train_model(model, train_loader, val_loader, device, num_epochs=10):
                 val_loss += loss.item()
         avg_train_loss = total_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
-        print(f'Epoch {epoch+1}:')
-        print(f'Average training loss: {avg_train_loss:.4f}')
-        print(f'Average validation loss: {avg_val_loss:.4f}')
+
+        # Calculate train and validation accuracy and         .venv/bin/python src/train.pyerror
+        def vad_accuracy(preds, targets):
+            # For regression, use mean absolute error as 'accuracy' proxy
+            return 100 - np.mean(np.abs(preds - targets)) * 100
+        def vad_error(preds, targets):
+            return np.mean(np.abs(preds - targets))
+
+        # Get predictions and targets for train
+        train_preds = []
+        train_targets = []
+        model.eval()
+        with torch.no_grad():
+            for batch in train_loader:
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                texts = batch['text']
+                labels = batch['labels'].to(device)
+                outputs = model(input_ids, attention_mask, texts)
+                train_preds.append(outputs.cpu().numpy())
+                train_targets.append(labels.cpu().numpy())
+        train_preds = np.concatenate(train_preds, axis=0)
+        train_targets = np.concatenate(train_targets, axis=0)
+        train_acc = vad_accuracy(train_preds, train_targets)
+        train_err = vad_error(train_preds, train_targets)
+
+        # Get predictions and targets for val
+        val_preds = []
+        val_targets = []
+        with torch.no_grad():
+            for batch in val_loader:
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                texts = batch['text']
+                labels = batch['labels'].to(device)
+                outputs = model(input_ids, attention_mask, texts)
+                val_preds.append(outputs.cpu().numpy())
+                val_targets.append(labels.cpu().numpy())
+        val_preds = np.concatenate(val_preds, axis=0)
+        val_targets = np.concatenate(val_targets, axis=0)
+        val_err = vad_error(val_preds, val_targets)
+
+        print(f"Epoch {epoch+1}: Train Accuracy: {train_acc:.4f}% | Train Loss: {avg_train_loss:.4f}, Train Err: {train_err:.4f} | "
+              f"Val Loss: {avg_val_loss:.4f}, Val Err: {val_err:.4f}")
         scheduler.step(avg_val_loss)
         # Save weights from epoch 3 or 4
         if epoch+1 in [3, 4]:
