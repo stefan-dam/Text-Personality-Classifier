@@ -2,68 +2,69 @@ from datasets import load_dataset
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-class VADMapper:
-    """Maps Big-5 personality traits to VAD (Valence-Arousal-Dominance) space"""
-    
-    def __init__(self):
-        # Define mapping weights for each Big-5 trait to VAD dimensions
-        # These weights should be fine-tuned based on psychological research
-        self.mapping_weights = {
-            'EXT': {'V': 0.6, 'A': 0.4, 'D': 0.8},  # Extraversion
-            'NEU': {'V': -0.7, 'A': 0.6, 'D': -0.4}, # Neuroticism
-            'AGR': {'V': 0.5, 'A': -0.3, 'D': -0.2}, # Agreeableness
-            'CON': {'V': 0.3, 'A': -0.1, 'D': 0.4},  # Conscientiousness
-            'OPN': {'V': 0.2, 'A': 0.3, 'D': 0.3}    # Openness
-        }
-    
-    def big5_to_vad(self, big5_scores):
-        """Convert Big-5 scores to VAD vector"""
-        vad = {
-            'V': 0.0,
-            'A': 0.0,
-            'D': 0.0
-        }
-        
-        # Normalize Big-5 scores and compute weighted sum for each VAD dimension
-        for trait, scores in big5_scores.items():
-            for dim in vad.keys():
-                vad[dim] += scores * self.mapping_weights[trait][dim]
-        
-        # Normalize VAD scores to [-1, 1] range
-        for dim in vad.keys():
-            vad[dim] = np.clip(vad[dim], -1, 1)
-            
-        return np.array([vad['V'], vad['A'], vad['D']])
-
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-
 class DataProcessor:
+    """
+    Processes the essays-big5 dataset for personality classification.
+    
+    JUSTIFICATION FOR DESIGN:
+    - Directly predicts Big-5 traits (binary labels: 0=low, 1=high) to avoid:
+      1. Information loss from dimensionality reduction (5D -> 3D via VAD)
+      2. Arbitrary/unvalidated mapping weights
+      3. Non-linear trait interactions being linearized
+      4. Cancellation effects when multiple traits are high
+    - Big-5 is the gold standard in personality psychology with decades of validation
+    - Multi-label binary classification: each person can be high (1) or low (0) on each trait independently
+    - Allows model to learn natural text-personality relationships without artificial intermediate representation
+    """
+    
     def __init__(self):
-        self.vad_mapper = VADMapper()
+        # Trait names for reference (OCEAN model)
+        self.trait_names = ['Extraversion', 'Neuroticism', 'Agreeableness', 
+                           'Conscientiousness', 'Openness']
 
     def load_and_preprocess(self):
-        """Load and preprocess the essays-big5 dataset from Hugging Face"""
+        """
+        Load and preprocess the essays-big5 dataset from Hugging Face.
+        
+        Returns:
+            X_train, X_test: Essay texts
+            y_train, y_test: Big-5 personality scores (binary: 0 or 1)
+                             Shape: (n_samples, 5) for [E, N, A, C, O]
+        
+        JUSTIFICATION:
+        - Binary labels kept as-is (0 = low trait, 1 = high trait):
+          1. Dataset provides binary classification (not continuous scores)
+          2. 0/1 encoding is standard for binary classification
+          3. Neural networks handle [0,1] targets naturally with sigmoid/MSE
+          4. No normalization needed - data already in optimal range
+        - Order [E, N, A, C, O] matches dataset convention (OCEAN model)
+        - This is a multi-label binary classification problem:
+          Each trait is independently 0 or 1 (person can be high in multiple traits)
+        """
         ds = load_dataset("jingjietan/essays-big5", split="train")
         texts = ds["text"]
-        # Big-5 columns: 'O', 'C', 'E', 'A', 'N'
+        
+        # Extract Big-5 binary labels in OCEAN order
+        # Dataset columns: 'O', 'C', 'E', 'A', 'N' (but we reorder to 'E', 'N', 'A', 'C', 'O')
+        # Values are binary: 0 (low on trait) or 1 (high on trait)
         big5_scores = np.array([
-            [float(row["E"]), float(row["N"]), float(row["A"]), float(row["C"]), float(row["O"])]
+            [float(row["E"]), float(row["N"]), float(row["A"]), 
+             float(row["C"]), float(row["O"])]
             for row in ds
         ])
-        # Normalize scores to [0, 1] (original scale is 1-5)
-        big5_scores = (big5_scores - 1) / 4
-        vad_vectors = np.array([
-            self.vad_mapper.big5_to_vad({
-                'EXT': scores[0],
-                'NEU': scores[1],
-                'AGR': scores[2],
-                'CON': scores[3],
-                'OPN': scores[4]
-            }) for scores in big5_scores
-        ])
+        
+        # NO NORMALIZATION NEEDED - data is already binary (0 or 1)
+        # JUSTIFICATION: 
+        # - Binary values [0, 1] are already in optimal range for neural networks
+        # - Previous formula (x-1)/4 was incorrect and created negative values:
+        #   * 0 -> (0-1)/4 = -0.25 (WRONG!)
+        #   * 1 -> (1-1)/4 = 0.0 (WRONG!)
+        # - Keeping raw 0/1 values preserves binary classification semantics
+        
+        # Split into train/test sets
+        # JUSTIFICATION: 80/20 split is standard, random_state ensures reproducibility
         X_train, X_test, y_train, y_test = train_test_split(
-            texts, vad_vectors, test_size=0.2, random_state=42
+            texts, big5_scores, test_size=0.2, random_state=42
         )
+        
         return X_train, X_test, y_train, y_test
