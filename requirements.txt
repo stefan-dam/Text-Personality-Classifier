@@ -1,0 +1,6 @@
+datasets
+numpy<2 # pytorch has not migrated to numpy 2
+scikit-learn
+torch
+transformers
+sentence-transformers
