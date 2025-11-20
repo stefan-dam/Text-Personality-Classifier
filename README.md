@@ -16,6 +16,8 @@ More on the Classifier Model
 - Decided to keep best model according to F1 score rather than binary accuracy as the data was more imbalanced (i.e it was more likely that the text had extroversion trait high), so accuracy wasn't a great metric
 - Messed around which a bunch of the parameters such as learning rate, batch size, etc, and highest F1 score achived was 0.685. (which still is not great, so looking at improvements) (Named Best_F1_model.pt on the sharepoint)
 
+Small Test:
+![small tests](./assets/two_short_tests.png)
 Next Steps:
 - Looking at some other data sources (currently 1.5k rows for training), and looking into merging the data to get a larger sample size without compromising the integrity of the source as a whole.
 - Alternatively, looking into how to better finetune BERT on small batches of data.
