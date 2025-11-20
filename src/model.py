@@ -26,7 +26,7 @@ class PersonalityClassifier(nn.Module):
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(256, 3)  # Output dimension is 3 for VAD (Valence, Arousal, Dominance)
+            nn.Linear(256, 5)  # Output dimension is 5 for Big-5 traits
         )
         
     def forward(self, input_ids, attention_mask, texts):
@@ -35,12 +35,13 @@ class PersonalityClassifier(nn.Module):
         roberta_embeddings = roberta_outputs.last_hidden_state[:, 0, :]  # Use [CLS] token
         
         # Get sBERT embeddings
-        sbert_embeddings = torch.tensor(self.sbert.encode(texts)).to(input_ids.device)
+        # sentence-transformers returns numpy arrays; ensure float32 tensor
+        sbert_embeddings = torch.tensor(self.sbert.encode(texts, show_progress_bar=False), dtype=torch.float32).to(input_ids.device)
         
         # Concatenate embeddings
         combined_embeddings = torch.cat([roberta_embeddings, sbert_embeddings], dim=1)
         
         # Pass through classifier
-        vad_predictions = self.classifier(combined_embeddings)
+        big5_predictions = self.classifier(combined_embeddings)
         
-        return vad_predictions
+        return big5_predictions

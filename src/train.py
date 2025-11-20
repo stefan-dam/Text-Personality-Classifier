@@ -73,14 +73,13 @@ def train_model(model, train_loader, val_loader, device, num_epochs=10):
         avg_train_loss = total_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
 
-        # Calculate train and validation accuracy and         .venv/bin/python src/train.pyerror
-        def vad_accuracy(preds, targets):
-            # For regression, use mean absolute error as 'accuracy' proxy
+        # Accuracy proxy and error (MAE across all traits)
+        def agg_accuracy(preds, targets):
             return 100 - np.mean(np.abs(preds - targets)) * 100
-        def vad_error(preds, targets):
+        def agg_error(preds, targets):
             return np.mean(np.abs(preds - targets))
 
-        # Get predictions and targets for train
+        # Aggregate train predictions
         train_preds = []
         train_targets = []
         model.eval()
@@ -95,10 +94,10 @@ def train_model(model, train_loader, val_loader, device, num_epochs=10):
                 train_targets.append(labels.cpu().numpy())
         train_preds = np.concatenate(train_preds, axis=0)
         train_targets = np.concatenate(train_targets, axis=0)
-        train_acc = vad_accuracy(train_preds, train_targets)
-        train_err = vad_error(train_preds, train_targets)
+        train_acc = agg_accuracy(train_preds, train_targets)
+        train_err = agg_error(train_preds, train_targets)
 
-        # Get predictions and targets for val
+        # Aggregate val predictions
         val_preds = []
         val_targets = []
         with torch.no_grad():
@@ -112,15 +111,15 @@ def train_model(model, train_loader, val_loader, device, num_epochs=10):
                 val_targets.append(labels.cpu().numpy())
         val_preds = np.concatenate(val_preds, axis=0)
         val_targets = np.concatenate(val_targets, axis=0)
-        val_err = vad_error(val_preds, val_targets)
+        val_err = agg_error(val_preds, val_targets)
 
         print(f"Epoch {epoch+1}: Train Accuracy: {train_acc:.4f}% | Train Loss: {avg_train_loss:.4f}, Train Err: {train_err:.4f} | "
               f"Val Loss: {avg_val_loss:.4f}, Val Err: {val_err:.4f}")
         scheduler.step(avg_val_loss)
-        # Save weights from epoch 3 or 4
+
         if epoch+1 in [3, 4]:
             torch.save(model.state_dict(), f'weights_epoch_{epoch+1}.pt')
-        # Early stopping
+
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             best_epoch = epoch
@@ -133,25 +132,22 @@ def train_model(model, train_loader, val_loader, device, num_epochs=10):
                 break
 
 def main():
-    # Initialize data processor (uses essays-big5 from Hugging Face)
     data_processor = DataProcessor()
     X_train, X_test, y_train, y_test = data_processor.load_and_preprocess()
     
-    # Initialize tokenizer and model
     tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
     model = PersonalityClassifier()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
-    # Create datasets and dataloaders
     train_dataset = TextPersonalityDataset(X_train, y_train, tokenizer)
     test_dataset = TextPersonalityDataset(X_test, y_test, tokenizer)
     
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=16)
     
-    # Train the model
     train_model(model, train_loader, test_loader, device)
 
 if __name__ == '__main__':
     main()
+
