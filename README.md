@@ -21,3 +21,4 @@ Small Test:
 Next Steps:
 - Looking at some other data sources (currently 1.5k rows for training), and looking into merging the data to get a larger sample size without compromising the integrity of the source as a whole.
 - Alternatively, looking into how to better finetune BERT on small batches of data.
+- Make stronger testing functions for the models on sharepoint.
