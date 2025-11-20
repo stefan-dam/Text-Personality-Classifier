@@ -8,7 +8,7 @@ OneDrive Link for Saved Models: https://utoronto-my.sharepoint.com/:f:/g/persona
 
 ### Current Status (11/20/25):
 
-The initial status from last week is that we trained a regression model with continuous outputs for trait expression rather than binary (MSE). (Though I'm not sure if this was the one with 80% accuracy or if that was corresponding to the intial one with VAD, clarify later)
+The initial status from last week is that we trained a regression model with continuous outputs for trait expression rather than binary (MSE). 
 
 This week, we were also attempting to use train a classifier model with binary outputs for trait expression (BSE with Logits Loss), since the given data is in binary form. (Although the big 5 personality traits is scored on a 7 point scale, the essay data souce is from 0-1, reducing to a high/low binary). In addition, many of the literature on Big 5/applying Big 5 uses this reduced binary form, so it may serve better with our applications.
 
